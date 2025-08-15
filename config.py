@@ -8,9 +8,11 @@ except Exception as e:
     print(f"⚠️ Could not load .env file: {e}")
 
 class Config:
-    # Claude API Configuration - for local development only
-    # In production, use AgentCore outbound identity instead
+    # Claude API Configuration - NO hardcoded keys! Use Secrets Manager or env vars
     ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
+    
+    # Secrets Manager Configuration
+    SECRETS_MANAGER_SECRET_ARN = os.getenv('SECRETS_MANAGER_SECRET_ARN', 'arn:aws:secretsmanager:us-east-1:713881785922:secret:bedrock-agentcore-identity!default/apikey/Anthropic-Key-Diego-U9wnHL')
     
     # AWS Configuration
     AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')

@@ -25,18 +25,33 @@ cd aws_agentcore_poc
 make setup  # Sets up everything: deps, virtual env, IAM role, etc.
 ```
 
-### 2. Add Your Claude API Key
+### 2. Configure Claude API Key (Secure Methods)
 
-Edit the `.env` file that was created:
+The agent uses **secure credential management** with multiple fallback options:
+
+**Option A: AWS Secrets Manager (Recommended for Production)**
+- API key is securely stored in AWS Secrets Manager
+- No configuration needed - works automatically if you have the secret ARN configured
+
+**Option B: Environment Variable (Local Development Only)**
+- Set `ANTHROPIC_API_KEY` in your `.env` file:
 
 ```bash
-# Claude API Configuration (REQUIRED)
-ANTHROPIC_API_KEY=sk-ant-your-api-key-here
+# Claude API Configuration (LOCAL DEVELOPMENT ONLY)
+# ANTHROPIC_API_KEY=sk-ant-your-api-key-here
+
+# AWS Secrets Manager (Production - already configured)
+SECRETS_MANAGER_SECRET_ARN=arn:aws:secretsmanager:region:account:secret:your-secret
 
 # AWS Configuration (optional - uses AWS CLI if not set)
 AWS_REGION=us-east-1
 AWS_PROFILE=default
 ```
+
+**🔐 Security Priority Order:**
+1. AgentCore Outbound Identity (when running in AgentCore)
+2. AWS Secrets Manager (production-ready)  
+3. Environment Variable (local development fallback)
 
 ### 3. Test Locally
 
@@ -156,23 +171,30 @@ agentcore status
 ## 🛠️ How It Works
 
 ### Local Execution
-1. Agent loads configuration from `.env` file
-2. Creates Anthropic client with your API key
-3. ADK agent calls Claude API directly
-4. Returns formatted JSON response
+1. Agent tries AgentCore outbound identity (if available)
+2. Falls back to AWS Secrets Manager for API key
+3. Final fallback to `.env` file for local development
+4. Creates Anthropic client with retrieved API key
+5. ADK agent calls Claude API directly
+6. Returns formatted JSON response
 
-### AWS AgentCore Execution
+### AWS AgentCore Execution  
 1. AgentCore loads the packaged agent
-2. Uses outbound identity for secure API key management
-3. Lambda handler processes requests
-4. Same agent code calls Claude API
-5. Returns response through AgentCore runtime
+2. **Primary**: Uses outbound identity for secure API key management
+3. **Fallback**: Uses AWS Secrets Manager if outbound identity unavailable
+4. Agent processes requests through proper entry point
+5. Same agent code calls Claude API with secure credentials
+6. Returns response through AgentCore runtime
 
 ## 🔐 Security Best Practices
 
-- ✅ API keys stored in environment variables
-- ✅ Outbound identity used in AWS
-- ✅ No hardcoded credentials in code
+- ✅ **No hardcoded credentials** anywhere in the codebase
+- ✅ **AWS Secrets Manager** for production API key storage
+- ✅ **AgentCore Outbound Identity** as primary method in AWS
+- ✅ **Environment variables** only for local development fallback
+- ✅ **Multi-tier credential resolution** with secure priorities
+- ✅ **JSON secret parsing** supporting multiple key formats
+- ✅ **IAM permissions** properly configured for Secrets Manager
 - ✅ `.env` file excluded from git
 
 ## 🧪 Testing

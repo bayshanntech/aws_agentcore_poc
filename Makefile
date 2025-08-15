@@ -26,7 +26,7 @@ setup: $(VENV) .env
 		else \
 			echo "ℹ️  IAM Role already exists (or insufficient permissions)"; \
 		fi; \
-		echo '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ecr:BatchCheckLayerAvailability","ecr:GetDownloadUrlForLayer","ecr:BatchGetImage","ecr:GetAuthorizationToken","logs:CreateLogStream","logs:PutLogEvents","xray:PutTraceSegments","xray:PutTelemetryRecords","cloudwatch:PutMetricData","bedrock-agentcore:GetAccessToken","bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream"],"Resource":"*"}]}' > /tmp/permissions-policy.json; \
+		echo '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ecr:BatchCheckLayerAvailability","ecr:GetDownloadUrlForLayer","ecr:BatchGetImage","ecr:GetAuthorizationToken","logs:CreateLogStream","logs:PutLogEvents","xray:PutTraceSegments","xray:PutTelemetryRecords","cloudwatch:PutMetricData","bedrock-agentcore:GetAccessToken","bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream","secretsmanager:GetSecretValue","secretsmanager:DescribeSecret"],"Resource":"*"}]}' > /tmp/permissions-policy.json; \
 		aws iam put-role-policy --role-name AgentCoreExecutionRole --policy-name AgentCoreExecutionPolicy --policy-document file:///tmp/permissions-policy.json >/dev/null 2>&1; \
 		rm -f /tmp/trust-policy.json /tmp/permissions-policy.json; \
 		ROLE_ARN=$$(aws iam get-role --role-name AgentCoreExecutionRole --query 'Role.Arn' --output text 2>/dev/null); \
@@ -86,7 +86,7 @@ create-iam-role: setup
 	echo "🆔 Using AWS Account: $$ACCOUNT_ID"; \
 	echo '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"bedrock-agentcore.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"'$$ACCOUNT_ID'"}}}]}' > /tmp/trust-policy.json; \
 	aws iam create-role --role-name AgentCoreExecutionRole --assume-role-policy-document file:///tmp/trust-policy.json --description "Service role for AWS Bedrock AgentCore execution" 2>/dev/null || echo "⚠️  Role may already exist"; \
-	echo '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ecr:BatchCheckLayerAvailability","ecr:GetDownloadUrlForLayer","ecr:BatchGetImage","ecr:GetAuthorizationToken","logs:CreateLogStream","logs:PutLogEvents","xray:PutTraceSegments","xray:PutTelemetryRecords","cloudwatch:PutMetricData","bedrock-agentcore:GetAccessToken","bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream"],"Resource":"*"}]}' > /tmp/permissions-policy.json; \
+	echo '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ecr:BatchCheckLayerAvailability","ecr:GetDownloadUrlForLayer","ecr:BatchGetImage","ecr:GetAuthorizationToken","logs:CreateLogStream","logs:PutLogEvents","xray:PutTraceSegments","xray:PutTelemetryRecords","cloudwatch:PutMetricData","bedrock-agentcore:GetAccessToken","bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream","secretsmanager:GetSecretValue","secretsmanager:DescribeSecret"],"Resource":"*"}]}' > /tmp/permissions-policy.json; \
 	aws iam put-role-policy --role-name AgentCoreExecutionRole --policy-name AgentCoreExecutionPolicy --policy-document file:///tmp/permissions-policy.json; \
 	rm -f /tmp/trust-policy.json /tmp/permissions-policy.json; \
 	ROLE_ARN=$$(aws iam get-role --role-name AgentCoreExecutionRole --query 'Role.Arn' --output text); \
