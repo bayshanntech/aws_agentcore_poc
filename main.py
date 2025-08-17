@@ -11,6 +11,7 @@ import boto3
 from anthropic import Anthropic
 from config import Config
 from google.adk.agents import Agent
+from playwright_agent import playwright_browser_tool
 
 class ClaudeAPIAgent:
     """ADK Agent that uses Claude API instead of AWS hosted models"""
@@ -111,15 +112,59 @@ class ClaudeAPIAgent:
             return f"Error calling Claude API: {str(e)}"
     
     async def process_request(self) -> str:
-        prompt = "please say hello"
-        response = await self.call_claude_api(prompt)
-        
-        return json.dumps({
-            "agent_response": response,
-            "prompt_used": prompt,
-            "model": "claude-3-5-sonnet-20241022",
-            "status": "success"
-        }, indent=2)
+        try:
+            # Step 1: Use Playwright Agent to search Google
+            print("🔄 Delegating to Playwright Agent for Google search...")
+            
+            # Prepare browser automation actions
+            search_actions = json.dumps({
+                "type": "google_search",
+                "query": "hello world"
+            })
+            
+            # Call the Playwright browser tool
+            browser_result = await playwright_browser_tool("https://www.google.com", search_actions)
+            browser_data = json.loads(browser_result)
+            
+            if browser_data.get("status") != "success":
+                return json.dumps({
+                    "error": "Playwright Agent failed to get search results",
+                    "browser_error": browser_data.get("error", "Unknown error"),
+                    "status": "failed"
+                }, indent=2)
+            
+            # Extract the first result title from browser automation
+            first_result_title = browser_data.get("result", {}).get("first_result_title", "No title found")
+            
+            # Step 2: Use Claude API to analyze the search result
+            print("🔄 Using Claude API to analyze search result...")
+            
+            claude_prompt = f"""I searched Google for "hello world" and got this as the first result title:
+            "{first_result_title}"
+            
+            Please provide a brief, friendly analysis of this search result. What does this title suggest about the search?"""
+            
+            claude_response = await self.call_claude_api(claude_prompt)
+            
+            return json.dumps({
+                "workflow": "multi_agent_delegation",
+                "playwright_agent_result": {
+                    "search_query": "hello world",
+                    "first_result_title": first_result_title,
+                    "status": "success"
+                },
+                "claude_agent_analysis": claude_response,
+                "final_response": f"Search completed! The first Google result for 'hello world' was: '{first_result_title}'. {claude_response}",
+                "model": "claude-3-5-sonnet-20241022",
+                "status": "success"
+            }, indent=2)
+            
+        except Exception as e:
+            return json.dumps({
+                "workflow": "multi_agent_delegation",
+                "error": str(e),
+                "status": "failed"
+            }, indent=2)
 
 async def say_hello() -> str:
     try:

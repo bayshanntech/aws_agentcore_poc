@@ -13,6 +13,8 @@ setup: $(VENV) .env
 	@echo "🏗️  Setting up development environment..."
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
+	@echo "🎭 Installing Playwright browsers..."
+	$(VENV)/bin/playwright install
 	@echo "🔐 Creating IAM execution role for AgentCore..."
 	@ACCOUNT_ID=$$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "ERROR"); \
 	if [ "$$ACCOUNT_ID" = "ERROR" ]; then \
@@ -61,9 +63,15 @@ run: setup
 	@echo "🚀 Running Claude ADK Agent locally..."
 	$(PYTHON) main.py
 
-# Test the agent
+# Test the agent with integration tests
 test: setup
-	@echo "🧪 Testing the agent..."
+	@echo "🧪 Running integration tests..."
+	$(PYTHON) -m pytest test_integration.py -v --asyncio-mode=auto
+	@echo "✅ Integration tests completed!"
+
+# Test the agent locally (quick test)
+test-local: setup
+	@echo "🧪 Quick local test..."
 	$(PYTHON) -c "import asyncio; from main import main; asyncio.run(main())"
 
 # Package for deployment

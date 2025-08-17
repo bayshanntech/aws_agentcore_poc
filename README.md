@@ -1,12 +1,19 @@
-# Google ADK Agent with Claude API on AWS Bedrock AgentCore
+# Multi-Agent System: Google ADK with Claude API + Playwright on AWS Bedrock AgentCore
 
-A simple "Hello World" example using Google's Agent Development Kit (ADK) that calls Claude API directly instead of AWS hosted models. This agent runs both locally and in AWS Bedrock AgentCore.
+A multi-agent system using Google's Agent Development Kit (ADK) that demonstrates agent-to-agent delegation. The main agent uses Claude API for reasoning, while a specialized Playwright agent handles web automation tasks. This system runs both locally and in AWS Bedrock AgentCore.
 
 ## 🏗️ Architecture
 
-- **Local Development**: ADK agent calls Claude API directly using your API key
-- **AWS Deployment**: Same agent runs in Bedrock AgentCore using outbound identity
-- **Model**: Claude 3.5 Sonnet via Anthropic API (not AWS Bedrock models)
+**Multi-Agent Workflow:**
+1. **Main Agent** (Claude API) → receives user requests and orchestrates the workflow
+2. **Playwright Agent** (Browser Automation) → handles web interactions like Google searches
+3. **Response Integration** → Main agent analyzes browser results and provides intelligent responses
+
+**Deployment Options:**
+- **Local Development**: Multi-agent system runs locally using your API key
+- **AWS Deployment**: Same system runs in Bedrock AgentCore using secure outbound identity
+- **LLM Model**: Claude 3.5 Sonnet via Anthropic API (not AWS Bedrock models)
+- **Browser Automation**: Playwright with Chromium for headless web interactions
 
 ## 📋 Prerequisites
 
@@ -14,6 +21,7 @@ A simple "Hello World" example using Google's Agent Development Kit (ADK) that c
 - AWS CLI configured with appropriate permissions
 - Anthropic Claude API key
 - AWS Bedrock AgentCore access
+- **Playwright browsers** (automatically installed via `make setup`)
 
 ## 🚀 Quick Start
 

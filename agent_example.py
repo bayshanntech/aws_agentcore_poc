@@ -19,7 +19,16 @@ def invoke(payload):
         
         response_data = json.loads(response)
         
-        return response_data["agent_response"]
+        # Handle both old and new response formats
+        if "final_response" in response_data:
+            # New multi-agent workflow format
+            return response_data["final_response"]
+        elif "agent_response" in response_data:
+            # Legacy format
+            return response_data["agent_response"]
+        else:
+            # Fallback: return the whole response
+            return response
         
     except Exception as e:
         return f"Error: {str(e)}"
