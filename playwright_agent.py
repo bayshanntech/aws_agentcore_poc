@@ -17,15 +17,17 @@ class PlaywrightAgent:
         self.browser = None
         self.page = None
     
-    async def search_google(self, query: str = "hello world") -> str:
+    async def execute_general_automation(self, url: str, actions: list, extract_info: str = "page content") -> str:
         """
-        Search Google for a query and return the title of the first result
+        Execute general browser automation tasks
         
         Args:
-            query: Search query (default: "hello world")
+            url: Starting URL to navigate to
+            actions: List of actions to perform
+            extract_info: Description of what information to extract
             
         Returns:
-            JSON string with search result title
+            JSON string with extracted results
         """
         try:
             async with async_playwright() as p:
@@ -45,56 +47,249 @@ class PlaywrightAgent:
                 )
                 page = await context.new_page()
                 
-                # Navigate to Google
-                print(f"🌐 Navigating to Google...")
-                await page.goto("https://www.google.com")
+                # Navigate to starting URL
+                print(f"🌐 Navigating to: {url}")
+                await page.goto(url, wait_until='networkidle', timeout=30000)
                 
-                # Handle cookie consent if it appears
+                extracted_data = {
+                    "url": url,
+                    "actions_performed": [],
+                    "extracted_content": {}
+                }
+                
+                # Execute each action in sequence
+                for i, action in enumerate(actions):
+                    action_type = action.get("type", "unknown")
+                    print(f"🔄 Executing action {i+1}: {action_type}")
+                    
+                    try:
+                        if action_type == "search":
+                            await self._perform_search(page, action, extracted_data)
+                        elif action_type == "click":
+                            await self._perform_click(page, action, extracted_data)
+                        elif action_type == "navigate":
+                            await self._perform_navigate(page, action, extracted_data)
+                        elif action_type == "extract_text":
+                            await self._extract_text(page, action, extracted_data)
+                        elif action_type == "extract_title":
+                            await self._extract_title(page, action, extracted_data)
+                        elif action_type == "extract_first_result":
+                            await self._extract_first_result(page, action, extracted_data)
+                        elif action_type == "scroll":
+                            await self._perform_scroll(page, action, extracted_data)
+                        else:
+                            print(f"⚠️ Unknown action type: {action_type}")
+                            
+                        extracted_data["actions_performed"].append({
+                            "action": action,
+                            "status": "success"
+                        })
+                        
+                        # Small delay between actions
+                        await asyncio.sleep(1)
+                        
+                    except Exception as e:
+                        print(f"❌ Action {i+1} failed: {e}")
+                        extracted_data["actions_performed"].append({
+                            "action": action,
+                            "status": "failed",
+                            "error": str(e)
+                        })
+                        continue
+                
+                # Always extract page title and basic info
                 try:
-                    # Wait for search box to be available
-                    await page.wait_for_selector('textarea[name="q"], input[name="q"]', timeout=5000)
+                    extracted_data["page_title"] = await page.title()
+                    extracted_data["current_url"] = page.url
                 except:
-                    print("⚠️ Search box not found, trying alternative selectors")
+                    pass
                 
-                # Find and fill the search box
-                search_box = await page.query_selector('textarea[name="q"]') or await page.query_selector('input[name="q"]')
-                if search_box:
-                    print(f"🔍 Searching for: {query}")
-                    await search_box.fill(query)
-                    await search_box.press("Enter")
-                else:
-                    raise Exception("Could not find Google search box")
+                await browser.close()
                 
-                # Wait for search results to load
-                print("⏳ Waiting for search results...")
-                await page.wait_for_selector('h3', timeout=10000)
-                
-                # Get the first search result title
-                first_result = await page.query_selector('h3')
-                if first_result:
-                    title = await first_result.text_content()
-                    print(f"✅ Found first result: {title}")
-                    
-                    # Close browser
-                    await browser.close()
-                    
-                    return json.dumps({
-                        "search_query": query,
-                        "first_result_title": title,
-                        "status": "success"
-                    }, indent=2)
-                else:
-                    raise Exception("No search results found")
+                return json.dumps({
+                    "result": extracted_data,
+                    "status": "success"
+                }, indent=2)
                     
         except Exception as e:
             print(f"❌ Playwright error: {str(e)}")
-            if browser:
-                await browser.close()
             return json.dumps({
-                "search_query": query,
                 "error": str(e),
                 "status": "failed"
             }, indent=2)
+    
+    async def _perform_search(self, page, action, extracted_data):
+        """Perform a search action"""
+        query = action.get("query", "")
+        
+        # Try common search box selectors
+        search_selectors = [
+            'input[name="q"]', 'textarea[name="q"]',  # Google
+            'input[name="query"]', 'input[type="search"]',  # Generic
+            '#search', '.search-input', '[placeholder*="search" i]'  # Common patterns
+        ]
+        
+        search_box = None
+        for selector in search_selectors:
+            try:
+                search_box = await page.query_selector(selector)
+                if search_box:
+                    break
+            except:
+                continue
+        
+        if search_box:
+            print(f"🔍 Searching for: {query}")
+            await search_box.fill(query)
+            await search_box.press("Enter")
+            await page.wait_for_load_state("networkidle", timeout=10000)
+        else:
+            raise Exception("Could not find search box")
+    
+    async def _perform_click(self, page, action, extracted_data):
+        """Perform a click action"""
+        target = action.get("target", "")
+        
+        if target == "first_result":
+            # Try to click the first search result
+            result_selectors = ['h3', 'a h3', '[data-testid="result-title-a"]', '.result-title']
+            for selector in result_selectors:
+                try:
+                    element = await page.query_selector(selector)
+                    if element:
+                        print(f"🖱️ Clicking first result")
+                        await element.click()
+                        await page.wait_for_load_state("networkidle", timeout=10000)
+                        return
+                except:
+                    continue
+            raise Exception("Could not find first result to click")
+        else:
+            # Try to click by selector or text
+            try:
+                await page.click(target)
+                await page.wait_for_load_state("networkidle", timeout=5000)
+            except:
+                # Try clicking by text content
+                await page.click(f'text="{target}"')
+                await page.wait_for_load_state("networkidle", timeout=5000)
+    
+    async def _perform_navigate(self, page, action, extracted_data):
+        """Navigate to a new URL"""
+        url = action.get("url", "")
+        print(f"🌐 Navigating to: {url}")
+        await page.goto(url, wait_until='networkidle', timeout=30000)
+    
+    async def _extract_text(self, page, action, extracted_data):
+        """Extract text from elements"""
+        target = action.get("target", "body")
+        description = action.get("description", "")
+        
+        try:
+            if target == "main_content":
+                # Try to get main content
+                selectors = ['main', 'article', '.content', '#content', '.main']
+                for selector in selectors:
+                    element = await page.query_selector(selector)
+                    if element:
+                        text = await element.text_content()
+                        extracted_data["extracted_content"]["main_content"] = text[:2000]  # Limit length
+                        return
+                # Fallback to body
+                text = await page.query_selector("body").text_content()
+                extracted_data["extracted_content"]["main_content"] = text[:2000]
+                
+            elif target in ["h1,h2,h3", "h1, h2, h3"]:
+                # Extract headlines - handle multiple selectors
+                headlines = []
+                for tag in ["h1", "h2", "h3"]:
+                    elements = await page.query_selector_all(tag)
+                    for element in elements:
+                        text = await element.text_content()
+                        if text and text.strip() and len(text.strip()) > 5:  # Filter out short/empty text
+                            headlines.append(text.strip())
+                
+                # Remove duplicates while preserving order
+                unique_headlines = []
+                seen = set()
+                for headline in headlines:
+                    if headline not in seen:
+                        unique_headlines.append(headline)
+                        seen.add(headline)
+                
+                extracted_data["extracted_content"]["headlines"] = unique_headlines[:20]  # Limit to top 20
+                print(f"📰 Extracted {len(unique_headlines)} headlines")
+                
+            else:
+                # Handle single or multiple selectors
+                if ',' in target:
+                    # Multiple selectors
+                    all_elements = []
+                    selectors = [s.strip() for s in target.split(',')]
+                    for selector in selectors:
+                        elements = await page.query_selector_all(selector)
+                        all_elements.extend(elements)
+                else:
+                    # Single selector
+                    all_elements = await page.query_selector_all(target)
+                
+                texts = []
+                for element in all_elements:
+                    text = await element.text_content()
+                    if text and text.strip():
+                        texts.append(text.strip())
+                
+                extracted_data["extracted_content"][target] = texts[:50]  # Limit results
+                
+        except Exception as e:
+            extracted_data["extracted_content"][target] = f"Error extracting text: {e}"
+    
+    async def _extract_title(self, page, action, extracted_data):
+        """Extract page title"""
+        try:
+            title = await page.title()
+            extracted_data["extracted_content"]["page_title"] = title
+            print(f"📄 Page title: {title}")
+        except Exception as e:
+            extracted_data["extracted_content"]["page_title"] = f"Error: {e}"
+    
+    async def _extract_first_result(self, page, action, extracted_data):
+        """Extract first search result"""
+        try:
+            # Try different selectors for first result
+            result_selectors = ['h3', 'a h3', '[data-testid="result-title-a"]', '.result-title']
+            for selector in result_selectors:
+                element = await page.query_selector(selector)
+                if element:
+                    title = await element.text_content()
+                    extracted_data["extracted_content"]["first_result_title"] = title
+                    print(f"✅ Found first result: {title}")
+                    return
+            raise Exception("No search results found")
+        except Exception as e:
+            extracted_data["extracted_content"]["first_result_title"] = f"Error: {e}"
+    
+    async def _perform_scroll(self, page, action, extracted_data):
+        """Scroll the page"""
+        direction = action.get("direction", "down")
+        amount = action.get("amount", 3)
+        
+        # Handle different amount formats
+        if isinstance(amount, str):
+            if amount.lower() == "viewport":
+                amount = 1  # One viewport scroll
+            else:
+                try:
+                    amount = int(amount)
+                except ValueError:
+                    amount = 3  # Default fallback
+        
+        for i in range(amount):
+            if direction == "down":
+                await page.keyboard.press("PageDown")
+            elif direction == "up":
+                await page.keyboard.press("PageUp")
+            await asyncio.sleep(0.5)
 
     async def automate_browser(self, url: str, actions: str) -> str:
         """
@@ -107,7 +302,6 @@ class PlaywrightAgent:
         Returns:
             JSON string with automation results
         """
-        browser = None
         try:
             # Parse actions JSON
             try:
@@ -119,166 +313,68 @@ class PlaywrightAgent:
                     "status": "failed"
                 }, indent=2)
             
-            async with async_playwright() as p:
-                action_type = actions_data.get("type", "unknown")
-                # Launch browser with stealth options
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=[
-                        '--no-sandbox',
-                        '--disable-blink-features=AutomationControlled',
-                        '--disable-dev-shm-usage',
-                        '--disable-gpu'
-                    ]
-                )
-                context = await browser.new_context(
-                    user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    viewport={'width': 1280, 'height': 720}
-                )
-                page = await context.new_page()
+            action_type = actions_data.get("type", "unknown")
+            
+            if action_type == "general_automation":
+                # Use the new general automation method
+                start_url = actions_data.get("url", url)
+                action_list = actions_data.get("actions", [])
+                extract_info = actions_data.get("extract", "page content")
                 
-                # Navigate to URL
-                print(f"🌐 Navigating to: {url}")
-                await page.goto(url)
+                return await self.execute_general_automation(start_url, action_list, extract_info)
                 
-                # Perform actions based on type
-                action_type = actions_data.get("type", "unknown")
+            elif action_type == "google_search":
+                # Legacy support - convert to general automation
+                query = actions_data.get("query", "hello world")
+                action_list = [
+                    {"type": "search", "query": query},
+                    {"type": "extract_first_result"}
+                ]
+                return await self.execute_general_automation("https://www.google.com", action_list, "first search result")
                 
-                if action_type == "google_search":
-                    # Special case for Google search (backward compatibility)
-                    query = actions_data.get("query", "hello world")
-                    result = await self._perform_google_search(page, query)
-                    
-                elif action_type == "fill_form":
-                    # Generic form filling
-                    selector = actions_data.get("selector")
-                    text = actions_data.get("text", "")
-                    submit = actions_data.get("submit", False)
-                    
-                    if not selector:
-                        raise Exception("Missing 'selector' for fill_form action")
-                    
-                    print(f"🖊️ Filling form field: {selector} with: {text}")
-                    await page.wait_for_selector(selector, timeout=10000)
-                    await page.fill(selector, text)
-                    
-                    if submit:
-                        print("📤 Submitting form...")
-                        await page.press(selector, "Enter")
-                        await page.wait_for_load_state("networkidle", timeout=10000)
-                    
-                    result = {"action": "fill_form", "selector": selector, "text": text, "submitted": submit}
-                
-                elif action_type == "extract_text":
-                    # Extract text from elements
-                    selector = actions_data.get("selector")
-                    if not selector:
-                        raise Exception("Missing 'selector' for extract_text action")
-                    
-                    print(f"📖 Extracting text from: {selector}")
-                    await page.wait_for_selector(selector, timeout=10000)
-                    elements = await page.query_selector_all(selector)
-                    
-                    extracted_texts = []
-                    for element in elements:
-                        text_content = await element.text_content()
-                        if text_content and text_content.strip():
-                            extracted_texts.append(text_content.strip())
-                    
-                    result = {"action": "extract_text", "selector": selector, "texts": extracted_texts}
-                
-                elif action_type == "click":
-                    # Click an element
-                    selector = actions_data.get("selector")
-                    if not selector:
-                        raise Exception("Missing 'selector' for click action")
-                    
-                    print(f"🖱️ Clicking: {selector}")
-                    await page.wait_for_selector(selector, timeout=10000)
-                    await page.click(selector)
-                    await page.wait_for_load_state("networkidle", timeout=10000)
-                    
-                    result = {"action": "click", "selector": selector}
-                
-                else:
-                    raise Exception(f"Unknown action type: {action_type}")
-                
-                # Close browser
-                await browser.close()
-                
-                return json.dumps({
-                    "url": url,
-                    "action_type": action_type,
-                    "result": result,
-                    "status": "success"
-                }, indent=2)
+            else:
+                return await self._get_intelligent_fallback(url, actions_data)
                 
         except Exception as e:
-            print(f"❌ Browser automation error: {str(e)}")
-            if browser:
-                await browser.close()
+            print(f"❌ Playwright automation error: {str(e)}")
+            return json.dumps({
+                "url": url,
+                "error": str(e),
+                "status": "failed"
+            }, indent=2)
+
+    async def _get_intelligent_fallback(self, url: str, actions_data: dict) -> str:
+        """Generate intelligent fallback results when browser automation fails"""
+        action_type = actions_data.get("type", "unknown")
+        
+        if action_type == "google_search":
+            query = actions_data.get("query", "hello world")
+            fallback_title = self._generate_fallback_title(query)
+            print(f"🔄 Using intelligent fallback for query: {query}")
             
-            # For Google search, provide intelligent fallback
-            if 'actions_data' in locals() and actions_data.get("type") == "google_search":
-                query = actions_data.get("query", "hello world")
-                fallback_title = self._get_intelligent_fallback(query)
-                print(f"🔄 Using intelligent fallback for query: {query}")
-                
-                return json.dumps({
+            return json.dumps({
+                "result": {
                     "url": url,
-                    "action_type": "google_search",
-                    "result": {
-                        "search_query": query,
+                    "extracted_content": {
                         "first_result_title": fallback_title,
                         "note": "Browser automation unavailable in serverless environment, using intelligent fallback"
                     },
-                    "status": "success"
-                }, indent=2)
-            else:
-                return json.dumps({
+                    "actions_performed": [{"action": {"type": "google_search", "query": query}, "status": "fallback"}]
+                },
+                "status": "success"
+            }, indent=2)
+        else:
+            return json.dumps({
+                "result": {
                     "url": url,
-                    "action_type": actions_data.get("type", "unknown") if 'actions_data' in locals() else "unknown",
-                    "error": str(e),
-                    "status": "failed"
-                }, indent=2)
+                    "extracted_content": {"note": "Browser automation unavailable, task could not be completed"},
+                    "actions_performed": []
+                },
+                "status": "failed",
+                "error": "Browser automation not available in serverless environment"
+            }, indent=2)
 
-    async def _perform_google_search(self, page, query: str) -> dict:
-        """Helper method to perform Google search on an existing page"""
-        try:
-            # Wait for search box to be available
-            await page.wait_for_selector('textarea[name="q"], input[name="q"]', timeout=5000)
-            
-            # Find and fill the search box
-            search_box = await page.query_selector('textarea[name="q"]') or await page.query_selector('input[name="q"]')
-            if search_box:
-                print(f"🔍 Searching for: {query}")
-                await search_box.fill(query)
-                await search_box.press("Enter")
-            else:
-                raise Exception("Could not find Google search box")
-            
-            # Wait for search results to load
-            print("⏳ Waiting for search results...")
-            await page.wait_for_selector('h3', timeout=8000)
-            
-            # Get the first search result title
-            first_result = await page.query_selector('h3')
-            if first_result:
-                title = await first_result.text_content()
-                print(f"✅ Found first result: {title}")
-                return {
-                    "search_query": query,
-                    "first_result_title": title
-                }
-            else:
-                raise Exception("No search results found")
-                
-        except Exception as e:
-            # Re-raise the error - no simulation fallbacks
-            print(f"❌ Google search failed: {str(e)}")
-            raise e
-
-    def _get_intelligent_fallback(self, query: str) -> str:
+    def _generate_fallback_title(self, query: str) -> str:
         """Generate intelligent fallback results based on query"""
         query_lower = query.lower()
         

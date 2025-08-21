@@ -105,14 +105,14 @@ aws_agentcore_poc/
 
 ## 🔧 Development Commands
 
-| Command | Description |
-|---------|-------------|
-| `make setup` | Set up development environment |
-| `make run` | Run the agent locally |
-| `make test` | Test the agent |
-| `make package` | Package for AWS deployment |
-| `make clean` | Clean build artifacts |
-| `make help` | Show all available commands |
+| Command                                                                    | Description |
+|----------------------------------------------------------------------------|-------------|
+| `make setup`                                                               | Set up development environment |
+| `make run PROMPT="Summarise the headlines on https://www.abc.net.au/news"` | Run the agent locally |
+| `make test`                                                                | Test the agent |
+| `make package`                                                             | Package for AWS deployment |
+| `make clean`                                                               | Clean build artifacts |
+| `make help`                                                                | Show all available commands |
 
 ## ☁️ AWS Bedrock AgentCore Deployment
 
@@ -198,7 +198,7 @@ agentcore status
 
 - ✅ **No hardcoded credentials** anywhere in the codebase
 - ✅ **AWS Secrets Manager** for production API key storage
-- ✅ **AgentCore Outbound Identity** as primary method in AWS
+
 - ✅ **Environment variables** only for local development fallback
 - ✅ **Multi-tier credential resolution** with secure priorities
 - ✅ **JSON secret parsing** supporting multiple key formats
@@ -248,12 +248,16 @@ Deploy to AgentCore and test through AWS console or API calls.
 
 ## 🚢 Next Steps
 
-1. **Extend Functionality**: Add more tools and capabilities to your agent
-2. **Add Persistence**: Integrate with AWS S3 or DynamoDB for state management
-3. **Monitoring**: Add CloudWatch logging and metrics
-4. **CI/CD**: Set up automated deployment pipeline
-5. **Multi-Agent**: Create agent workflows with multiple ADK agents
+  ❌ What's Not Working:
 
----
+   AgentCore has an issue detectin' Docker on yer system, even though Docker is clearly runnin'. This might be a bug in the AgentCore SDK or a path issue.
 
-*Built with ⚓ by Captain Blackwater - May your deployments be smooth sailing!*
+  Deployment Issue:
+  - Our prompt forwarding fixes are only in local files (uncommitted)
+  - Current deployed version still has hardcoded "hello world"
+  - AgentCore isn't detecting Docker (even though Docker is running)
+  - Can't use --local-build or --local deployment modes
+
+  Current State:
+  When you run agentcore invoke '{"prompt": "Search Melbourne Weather"}', it still searches for "hello world" because the deployed version doesn't have our fixes.
+

@@ -3,7 +3,7 @@
 import json
 import asyncio
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
-from main import say_hello
+from main import process_prompt
 
 # Create the AgentCore app
 app = BedrockAgentCoreApp()
@@ -12,9 +12,20 @@ app = BedrockAgentCoreApp()
 def invoke(payload):
 
     try:
+        # Extract prompt from payload
+        user_prompt = "hello world"  # default fallback
+        if payload and isinstance(payload, dict):
+            user_prompt = payload.get("prompt", "hello world")
+        elif payload and isinstance(payload, str):
+            try:
+                parsed_payload = json.loads(payload)
+                user_prompt = parsed_payload.get("prompt", "hello world")
+            except:
+                user_prompt = payload  # use raw string if not JSON
+        
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        response = loop.run_until_complete(say_hello())
+        response = loop.run_until_complete(process_prompt(user_prompt))
         loop.close()
         
         response_data = json.loads(response)

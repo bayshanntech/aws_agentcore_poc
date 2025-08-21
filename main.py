@@ -13,9 +13,28 @@ from config import Config
 from google.adk.agents import Agent
 from playwright_agent import playwright_browser_tool
 
+if __name__ == '__main__':
+    asyncio.run(main())
+
+async def main():
+    print("🚀 Starting Claude ADK Agent...")
+    response = await process_prompt()
+    print("\n📄 Agent Response:")
+    print(response)
+
+
+async def process_prompt(user_prompt: str = "Navigate to Duckduckgo and enter hello world, then summarise the content of the first result") -> str:
+    try:
+        claude_agent = ClaudeAPIAgent()
+        response = await claude_agent.process_request(user_prompt)
+        return response
+    except Exception as e:
+        return json.dumps({"error": str(e), "status": "failed"}, indent=2)
+
+
 class ClaudeAPIAgent:
     """ADK Agent that uses Claude API instead of AWS hosted models"""
-    
+
     def __init__(self):
         # Don't validate or get API key immediately - do it lazily
         self.api_key = None
@@ -96,7 +115,6 @@ class ClaudeAPIAgent:
         raise ValueError("No API key available. Configure one of: AgentCore outbound identity, Secrets Manager, or ANTHROPIC_API_KEY environment variable.")
     
     async def call_claude_api(self, prompt: str) -> str:
-        """Call Claude API with the given prompt"""
         try:
             if self.anthropic_client is None:
                 self.api_key = self._get_api_key()
@@ -111,50 +129,141 @@ class ClaudeAPIAgent:
         except Exception as e:
             return f"Error calling Claude API: {str(e)}"
     
-    async def process_request(self) -> str:
+    def _extract_json_from_response(self, response: str) -> dict:
+        """Extract JSON from Claude's response, handling cases where there's additional text"""
+        # First, try to parse the entire response as JSON
         try:
-            # Step 1: Use Playwright Agent to search Google
-            print("🔄 Delegating to Playwright Agent for Google search...")
+            return json.loads(response)
+        except json.JSONDecodeError:
+            pass
+        
+        # If that fails, try to find JSON within the response
+        import re
+        
+        # Look for JSON objects starting with { and ending with }
+        json_matches = re.findall(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response, re.DOTALL)
+        
+        for match in json_matches:
+            try:
+                # Try to parse each potential JSON match
+                parsed = json.loads(match)
+                # Validate it has the expected structure
+                if isinstance(parsed, dict) and ('url' in parsed or 'actions' in parsed):
+                    return parsed
+            except json.JSONDecodeError:
+                continue
+        
+        # If no valid JSON found, try a more sophisticated approach
+        # Look for the first { and last } and extract everything between
+        first_brace = response.find('{')
+        last_brace = response.rfind('}')
+        
+        if first_brace != -1 and last_brace != -1 and first_brace < last_brace:
+            json_candidate = response[first_brace:last_brace + 1]
+            try:
+                parsed = json.loads(json_candidate)
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+        
+        raise ValueError(f"No valid JSON found in response: {response[:200]}...")
+
+
+    async def process_request(self, user_prompt) -> str:
+        try:
+            # Step 1: Use Claude API to interpret the user's request and plan browser actions
+            print("🔄 Using Claude API to interpret user request...")
             
-            # Prepare browser automation actions
-            search_actions = json.dumps({
-                "type": "google_search",
-                "query": "hello world"
+            task_analysis_prompt = f"""You are a web automation planner. Analyze this user request and create a browser automation plan:
+
+Request: "{user_prompt}"
+
+Please respond with a JSON object containing:
+1. "url": The starting URL to navigate to
+2. "actions": A list of browser actions to perform
+3. "data_to_extract": What information to extract from the final page
+
+Available action types:
+- navigate: Go to a URL
+- search: Enter text in a search box and submit
+- click: Click on an element
+- scroll: Scroll the page
+- extract_text: Get text content from elements
+- extract_title: Get page title
+- extract_first_result: Get first search result
+
+Example response format:
+{{
+    "url": "https://duckduckgo.com",
+    "actions": [
+        {{"type": "search", "query": "hello world"}},
+        {{"type": "click", "target": "first_result"}},
+        {{"type": "extract_text", "target": "main_content"}}
+    ],
+    "data_to_extract": "content summary of the first search result"
+}}
+
+Create a plan for: "{user_prompt}"
+"""
+            
+            plan_response = await self.call_claude_api(task_analysis_prompt)
+            
+            try:
+                # Try to extract JSON from the response
+                browser_plan = self._extract_json_from_response(plan_response)
+            except (json.JSONDecodeError, ValueError) as e:
+                return json.dumps({
+                    "error": "Failed to parse browser automation plan",
+                    "raw_response": plan_response,
+                    "parse_error": str(e),
+                    "status": "failed"
+                }, indent=2)
+            
+            # Step 2: Execute the browser automation plan
+            print("🔄 Delegating to Playwright Agent for task execution...")
+            
+            browser_actions = json.dumps({
+                "type": "general_automation",
+                "url": browser_plan.get("url", "https://www.google.com"),
+                "actions": browser_plan.get("actions", []),
+                "extract": browser_plan.get("data_to_extract", "page content")
             })
             
             # Call the Playwright browser tool
-            browser_result = await playwright_browser_tool("https://www.google.com", search_actions)
+            browser_result = await playwright_browser_tool(browser_plan.get("url", "https://www.google.com"), browser_actions)
             browser_data = json.loads(browser_result)
             
             if browser_data.get("status") != "success":
                 return json.dumps({
-                    "error": "Playwright Agent failed to get search results",
+                    "error": "Playwright Agent failed to execute task",
                     "browser_error": browser_data.get("error", "Unknown error"),
                     "status": "failed"
                 }, indent=2)
             
-            # Extract the first result title from browser automation
-            first_result_title = browser_data.get("result", {}).get("first_result_title", "No title found")
+            # Step 3: Use Claude API to analyze and summarize the results
+            print("🔄 Using Claude API to analyze browser results...")
             
-            # Step 2: Use Claude API to analyze the search result
-            print("🔄 Using Claude API to analyze search result...")
+            extracted_data = browser_data.get("result", {})
             
-            claude_prompt = f"""I searched Google for "hello world" and got this as the first result title:
-            "{first_result_title}"
+            summary_prompt = f"""Based on this browser automation task, please provide a helpful summary:
+
+Original Request: "{user_prompt}"
+
+Browser Results:
+{json.dumps(extracted_data, indent=2)}
+
+Please provide a clear, helpful summary of what was accomplished and the key information found."""
             
-            Please provide a brief, friendly analysis of this search result. What does this title suggest about the search?"""
-            
-            claude_response = await self.call_claude_api(claude_prompt)
+            claude_analysis = await self.call_claude_api(summary_prompt)
             
             return json.dumps({
-                "workflow": "multi_agent_delegation",
-                "playwright_agent_result": {
-                    "search_query": "hello world",
-                    "first_result_title": first_result_title,
-                    "status": "success"
-                },
-                "claude_agent_analysis": claude_response,
-                "final_response": f"Search completed! The first Google result for 'hello world' was: '{first_result_title}'. {claude_response}",
+                "workflow": "intelligent_browser_automation",
+                "original_request": user_prompt,
+                "browser_plan": browser_plan,
+                "browser_results": extracted_data,
+                "claude_analysis": claude_analysis,
+                "final_response": f"Task completed! {claude_analysis}",
                 "model": "claude-3-5-sonnet-20241022",
                 "status": "success"
             }, indent=2)
@@ -166,31 +275,4 @@ class ClaudeAPIAgent:
                 "status": "failed"
             }, indent=2)
 
-async def say_hello() -> str:
-    try:
-        claude_agent = ClaudeAPIAgent()
-        response = await claude_agent.process_request()
-        return response
-    except Exception as e:
-        return json.dumps({"error": str(e), "status": "failed"}, indent=2)
 
-def create_agent() -> Agent:
-
-    agent = Agent(
-        name="claude-hello-world",
-        model="gemini-2.0-flash",  # This won't actually be used since we override with Claude
-        description="Simple hello world agent using Claude API",
-        instruction="You are a helpful agent that says hello using Claude API",
-        tools=[say_hello]
-    )
-    
-    return agent
-
-async def main():
-    print("🚀 Starting Claude Hello World ADK Agent...")
-    response = await say_hello()
-    print("\n📄 Agent Response:")
-    print(response)
-
-if __name__ == '__main__':
-    asyncio.run(main())

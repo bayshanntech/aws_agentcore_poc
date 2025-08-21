@@ -11,10 +11,10 @@ all: setup
 # Setup development environment
 setup: $(VENV) .env
 	@echo "🏗️  Setting up development environment..."
-	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements.txt
+	@$(PIP) install --upgrade pip >/dev/null 2>&1
+	@$(PIP) install -r requirements.txt >/dev/null 2>&1
 	@echo "🎭 Installing Playwright browsers..."
-	$(VENV)/bin/playwright install
+	@$(VENV)/bin/playwright install >/dev/null 2>&1
 	@echo "🔐 Creating IAM execution role for AgentCore..."
 	@ACCOUNT_ID=$$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "ERROR"); \
 	if [ "$$ACCOUNT_ID" = "ERROR" ]; then \
@@ -55,13 +55,25 @@ $(VENV):
 # Install dependencies
 install: $(VENV)
 	@echo "📦 Installing dependencies..."
-	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements.txt
+	@$(PIP) install --upgrade pip >/dev/null 2>&1
+	@$(PIP) install -r requirements.txt >/dev/null 2>&1
 
-# Run the agent locally
+# Run the agent locally with custom prompt
+# Usage: make run PROMPT="what is the weather in Melbourne?"
 run: setup
 	@echo "🚀 Running Claude ADK Agent locally..."
-	$(PYTHON) main.py
+	@if [ -n "$(PROMPT)" ]; then \
+		$(PYTHON) local_runner.py "$(PROMPT)"; \
+	else \
+		echo "💡 Usage: make run PROMPT=\"your custom prompt here\""; \
+		echo "📝 Example: make run PROMPT=\"what is the weather in Melbourne?\""; \
+		echo "🔄 Running with default prompt..."; \
+		$(PYTHON) local_runner.py; \
+	fi
+
+# Handle quoted arguments as Make targets (to avoid errors)
+%:
+	@:
 
 # Test the agent with integration tests
 test: setup
