@@ -63,12 +63,12 @@ install: $(VENV)
 run: setup
 	@echo "🚀 Running Claude ADK Agent locally..."
 	@if [ -n "$(PROMPT)" ]; then \
-		$(PYTHON) local_runner.py "$(PROMPT)"; \
+		$(PYTHON) -c "import asyncio; from main import process_prompt; print(asyncio.run(process_prompt('$(PROMPT)'))); " ; \
 	else \
 		echo "💡 Usage: make run PROMPT=\"your custom prompt here\""; \
 		echo "📝 Example: make run PROMPT=\"what is the weather in Melbourne?\""; \
 		echo "🔄 Running with default prompt..."; \
-		$(PYTHON) local_runner.py; \
+		$(PYTHON) -c "import asyncio; from main import process_prompt; print(asyncio.run(process_prompt())); "; \
 	fi
 
 # Handle quoted arguments as Make targets (to avoid errors)
